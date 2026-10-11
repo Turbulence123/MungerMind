@@ -1,0 +1,1 @@
+"""Retrieval-augmented generation used to ground reasoning in external knowledge."""

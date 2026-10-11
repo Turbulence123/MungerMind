@@ -1,0 +1,1 @@
+"""Group-dynamics safeguards: groupthink, conformity, authority bias and diffusion of responsibility."""

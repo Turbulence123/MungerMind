@@ -1,0 +1,1 @@
+"""Assembles one expert agent per discipline from the mental-model registry."""

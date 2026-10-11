@@ -1,0 +1,1 @@
+"""Forced thinking order: the reasoning pipeline every agent has to walk through."""

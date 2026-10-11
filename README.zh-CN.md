@@ -180,7 +180,7 @@ flowchart TD
 ## 🚀 快速开始
 
 > [!WARNING]
-> 本项目处于**早期孵化阶段（alpha）**。当前 [main.py](./main.py) 与 [index.html](./index.html) 为空骨架，下方命令用于准备开发环境；功能调用示例将在首个可用版本发布后补全。
+> 本项目处于**早期孵化阶段（alpha）**。当前处于**骨架阶段**：[mungermind/__main__.py](./mungermind/__main__.py) 与 [frontend/index.html](./frontend/index.html) 为占位文件，各模块仅声明职责。下方命令用于准备开发环境；功能调用示例将在首个可用版本发布后补全。
 
 ### 环境要求
 
@@ -206,7 +206,7 @@ uv sync
 ### 运行
 
 ```bash
-uv run main.py
+uv run python -m mungermind
 ```
 
 ---
@@ -237,14 +237,41 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 
 ```text
 MungerMind/
-├── main.py                    # 程序入口（规划中）
-├── index.html                 # 液态玻璃前端界面（规划中）
-├── pyproject.toml             # 项目定义与依赖清单
-├── uv.lock                    # 依赖锁定文件
-├── .python-version            # Python 版本约束
-├── .env                       # 环境变量（不纳入版本控制）
+├── mungermind/                  # 主包（扁平布局）
+│   ├── __main__.py              #   CLI 入口：`python -m mungermind`
+│   ├── config.py                #   运行时配置
+│   ├── agents/                  #   主 Agent 与各学科专家
+│   │   ├── base.py              #     Agent 公共抽象
+│   │   ├── coordinator.py       #     主 Agent：计划/组织/协调/控制
+│   │   ├── expert_factory.py    #     按学科装配专家
+│   │   └── roles/dissenter.py   #     异议者角色（反群体思维）
+│   ├── mental_models/           #   多元思维模型库
+│   │   ├── model.py             #     思维模型数据结构
+│   │   ├── registry.py          #     按学科与触发条件建立索引
+│   │   └── disciplines/         #     十二学科，每学科一个模块
+│   ├── reasoning/               #   强制思考顺序
+│   │   ├── pipeline.py          #     按序驱动五个步骤
+│   │   └── steps/               #     界定/扫描/反向/权衡/判断
+│   ├── management/              #   计划、组织、协调、控制
+│   ├── governance/              #   社会心理学管控机制
+│   ├── tools/                   #   Skills / RAG / MCP
+│   ├── memory/                  #   记忆后端（含隐私模式）
+│   │   └── privacy.py           #     「七秒钟记忆的鱼」：Redis TTL + 滚动窗口
+│   ├── llm/                     #   OpenAI 兼容客户端
+│   ├── prompts/                 #   提示词资产与加载器
+│   └── utils/                   #   公共工具
+├── frontend/                    # 液态玻璃前端界面
+├── tests/                       # 测试套件
+├── docs/                        # 文档
+├── examples/                    # 可运行示例
+├── config/                      # 配置样例
+├── scripts/                     # 开发与运维脚本
+├── pyproject.toml               # 项目定义与依赖清单
+├── uv.lock                      # 依赖锁定文件
+├── .python-version              # Python 版本约束
+├── .env                         # 环境变量（不纳入版本控制）
 ├── .gitignore
-└── MungerMind.code-workspace  # VS Code 工作区配置
+└── MungerMind.code-workspace    # VS Code 工作区配置
 ```
 
 ---

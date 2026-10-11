@@ -1,0 +1,1 @@
+"""The memory interface shared by every backend."""

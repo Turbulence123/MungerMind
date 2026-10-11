@@ -1,0 +1,1 @@
+"""Shared agent abstractions: identity, discipline, mental-model access, output contract."""

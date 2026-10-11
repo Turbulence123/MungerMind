@@ -1,0 +1,1 @@
+"""Tool layer: skills, retrieval-augmented generation and MCP integrations."""

@@ -1,0 +1,1 @@
+"""Standard memory: persistent conversational context for long-running work."""

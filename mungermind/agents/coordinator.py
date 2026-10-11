@@ -1,0 +1,1 @@
+"""Main agent exercising the manager's roles: plan, organize, coordinate, control."""

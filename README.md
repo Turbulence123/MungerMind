@@ -180,7 +180,7 @@ flowchart TD
 ## 🚀 Quick Start
 
 > [!WARNING]
-> This project is at an **early incubation stage (alpha)**. [main.py](./main.py) and [index.html](./index.html) are currently empty skeletons; the commands below prepare a development environment, and usage examples will follow with the first usable release.
+> This project is at an **early incubation stage (alpha)**. The package ships as a **skeleton**: [mungermind/__main__.py](./mungermind/__main__.py) and [frontend/index.html](./frontend/index.html) are placeholders, and every module only declares its responsibility. The commands below prepare a development environment; usage examples will follow with the first usable release.
 
 ### Requirements
 
@@ -206,7 +206,7 @@ uv sync
 ### Run
 
 ```bash
-uv run main.py
+uv run python -m mungermind
 ```
 
 ---
@@ -237,14 +237,41 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 
 ```text
 MungerMind/
-├── main.py                    # Entry point (planned)
-├── index.html                 # Liquid Glass front end (planned)
-├── pyproject.toml             # Project definition and dependencies
-├── uv.lock                    # Locked dependency versions
-├── .python-version            # Python version constraint
-├── .env                       # Environment variables (not version-controlled)
+├── mungermind/                  # Main package (flat layout)
+│   ├── __main__.py              #   CLI entry point: `python -m mungermind`
+│   ├── config.py                #   Runtime configuration
+│   ├── agents/                  #   Main agent + per-discipline experts
+│   │   ├── base.py              #     shared agent abstractions
+│   │   ├── coordinator.py       #     main agent: plan / organize / coordinate / control
+│   │   ├── expert_factory.py    #     builds one expert per discipline
+│   │   └── roles/dissenter.py   #     dissenter role (anti-groupthink)
+│   ├── mental_models/           #   The latticework of mental models
+│   │   ├── model.py             #     the mental-model record
+│   │   ├── registry.py          #     index by discipline and trigger
+│   │   └── disciplines/         #     twelve disciplines, one module each
+│   ├── reasoning/               #   Forced thinking order
+│   │   ├── pipeline.py          #     runs the five steps in order
+│   │   └── steps/               #     frame / scan / invert / trade-off / judge
+│   ├── management/              #   Plan, organize, coordinate, control
+│   ├── governance/              #   Social-psychology safeguards
+│   ├── tools/                   #   Skills / RAG / MCP
+│   ├── memory/                  #   Memory backends, incl. privacy mode
+│   │   └── privacy.py           #     "goldfish memory": Redis TTL + rolling window
+│   ├── llm/                     #   OpenAI-compatible client
+│   ├── prompts/                 #   Prompt assets and loader
+│   └── utils/                   #   Shared utilities
+├── frontend/                    # Liquid Glass UI
+├── tests/                       # Test suite
+├── docs/                        # Documentation
+├── examples/                    # Runnable examples
+├── config/                      # Configuration samples
+├── scripts/                     # Development and ops scripts
+├── pyproject.toml               # Project definition and dependencies
+├── uv.lock                      # Locked dependency versions
+├── .python-version              # Python version constraint
+├── .env                         # Environment variables (not version-controlled)
 ├── .gitignore
-└── MungerMind.code-workspace  # VS Code workspace configuration
+└── MungerMind.code-workspace    # VS Code workspace configuration
 ```
 
 ---

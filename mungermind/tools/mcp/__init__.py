@@ -1,0 +1,1 @@
+"""Model Context Protocol wiring for external tools and data sources."""

@@ -1,0 +1,1 @@
+"""Privacy mode ("goldfish memory"): Redis TTL on the time axis and a rolling window on the turn axis."""

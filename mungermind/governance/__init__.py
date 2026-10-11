@@ -1,0 +1,1 @@
+"""Governance of the agent collective, informed by social psychology."""

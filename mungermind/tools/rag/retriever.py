@@ -1,0 +1,1 @@
+"""Document retrieval and context assembly for RAG."""

@@ -1,0 +1,1 @@
+"""Coordinating: align viewpoints, resolve conflicts, orchestrate debate."""

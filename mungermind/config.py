@@ -1,0 +1,1 @@
+"""Runtime configuration: model endpoints, feature flags and the privacy-mode switch."""

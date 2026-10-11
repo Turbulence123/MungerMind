@@ -1,0 +1,1 @@
+"""The skill protocol: inputs, outputs, preconditions and side effects."""

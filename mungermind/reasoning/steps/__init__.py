@@ -1,0 +1,1 @@
+"""The individual steps of the forced thinking order."""

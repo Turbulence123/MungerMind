@@ -1,0 +1,1 @@
+"""The dissenter role: keeps criticism alive and resists groupthink."""
