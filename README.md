@@ -213,23 +213,38 @@ uv run python -m mungermind
 
 ## 🔧 Configuration
 
-Configuration is loaded from [.env](./.env) via `python-dotenv`:
+Configuration is loaded from [.env](./.env) via `python-dotenv`. The client resolves the provider automatically, so switching backends needs no code change:
 
 ```dotenv
-# .env
-OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxx
-OPENAI_BASE_URL=https://api.openai.com/v1
+# .env — one provider is enough
+LLM_API_KEY=sk-xxxxxxxxxxxxxxxx
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL_ID=deepseek-flash
 ```
+
+Detection order: explicit `provider=` → endpoint (`base_url=` / `LLM_BASE_URL`) → provider-specific keys → API-key shape → `openai`. An explicitly configured endpoint wins over an unrelated provider key, so a leftover `MODELSCOPE_API_KEY` never hijacks a DeepSeek setup.
 
 | Variable | Required | Default | Description |
 | :--- | :---: | :--- | :--- |
-| `OPENAI_API_KEY` | ✅ | — | OpenAI-compatible API key |
-| `OPENAI_BASE_URL` | ⭕ | `https://api.openai.com/v1` | Change it when using a self-hosted or third-party gateway |
-| `OPENAI_MODEL` | ⭕ | — | Primary reasoning model |
+| `LLM_PROVIDER` | ⭕ | auto | Force a provider: `openai`, `modelscope`, `zhipu`, `deepseek`, `dashscope`, `moonshot`, `siliconflow`, `openrouter`, `ollama`, `vllm`, `local`, `auto` |
+| `LLM_API_KEY` | ⭕ | — | Generic key, used when the provider has no dedicated variable |
+| `LLM_BASE_URL` | ⭕ | provider default | OpenAI-compatible endpoint; its host/port also drives detection |
+| `LLM_MODEL_ID` | ⭕ | provider default | Model name sent to the API |
+| `LLM_TIMEOUT` | ⭕ | `60` | Request timeout in seconds |
+| `MODELSCOPE_API_KEY` | ⭕ | — | ModelScope key (`ms-` prefix is detected automatically) |
+| `ZHIPU_API_KEY` | ⭕ | — | Zhipu AI key (`id.secret` shape is detected automatically) |
+| `OPENAI_API_KEY` | ⭕ | — | OpenAI key |
+| `DEEPSEEK_API_KEY` | ⭕ | — | DeepSeek key |
+| `DASHSCOPE_API_KEY` | ⭕ | — | Alibaba Cloud DashScope key |
+| `MOONSHOT_API_KEY` | ⭕ | — | Moonshot AI key |
+| `SILICONFLOW_API_KEY` | ⭕ | — | SiliconFlow key |
+| `OPENROUTER_API_KEY` | ⭕ | — | OpenRouter key |
+| `OLLAMA_HOST` | ⭕ | `http://localhost:11434/v1` | Local Ollama endpoint; the scheme is optional |
+| `VLLM_BASE_URL` | ⭕ | `http://localhost:8000/v1` | Local vLLM endpoint |
 | `REDIS_URL` | ⭕ | — | TTL storage for Privacy Mode; falls back to in-memory when unset |
 
 > [!NOTE]
-> The table above lists **planned configuration keys**; the implementation is the source of truth. `.env` is ignored by [.gitignore](./.gitignore) — never commit your secrets.
+> Local servers need no real key (`ollama` / `vllm` placeholders are filled automatically). vLLM still requires `LLM_MODEL_ID` (or `model=`) to match the model served by the API. `.env` is ignored by [.gitignore](./.gitignore) — never commit your secrets.
 
 ---
 
@@ -257,9 +272,13 @@ MungerMind/
 │   ├── tools/                   #   Skills / RAG / MCP
 │   ├── memory/                  #   Memory backends, incl. privacy mode
 │   │   └── privacy.py           #     "goldfish memory": Redis TTL + rolling window
-│   ├── llm/                     #   OpenAI-compatible client
-│   ├── prompts/                 #   Prompt assets and loader
-│   └── utils/                   #   Shared utilities
+│   ├── core/                    #   Runtime primitives
+│   │   ├── llm.py               #     OpenAI-compatible client with provider auto-detection
+│   │   ├── message.py           #     Unified message format
+│   │   ├── config.py            #     Central configuration
+│   │   ├── exceptions.py        #     Framework exceptions
+│   │   └── agent.py             #     Agent base class
+│   └── prompts/                 #   Prompt assets and loader
 ├── frontend/                    # Liquid Glass UI
 ├── tests/                       # Test suite
 ├── docs/                        # Documentation
