@@ -213,23 +213,38 @@ uv run python -m mungermind
 
 ## 🔧 配置说明
 
-配置通过 [.env](./.env) 加载（依赖 `python-dotenv`）：
+配置通过 [.env](./.env) 加载（依赖 `python-dotenv`）。客户端会自动识别服务商，切换后端无需改动代码：
 
 ```dotenv
-# .env
-OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxx
-OPENAI_BASE_URL=https://api.openai.com/v1
+# .env —— 配置一个服务商即可
+LLM_API_KEY=sk-xxxxxxxxxxxxxxxx
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL_ID=deepseek-flash
 ```
+
+识别顺序：显式 `provider=` → 服务地址（`base_url=` / `LLM_BASE_URL`）→ 服务商专属环境变量 → 密钥格式 → `openai`。显式配置的服务地址优先于无关的服务商密钥，因此残留的 `MODELSCOPE_API_KEY` 不会劫持 DeepSeek 配置。
 
 | 变量 | 必填 | 默认值 | 说明 |
 | :--- | :---: | :--- | :--- |
-| `OPENAI_API_KEY` | ✅ | — | OpenAI 兼容 API 密钥 |
-| `OPENAI_BASE_URL` | ⭕ | `https://api.openai.com/v1` | 使用自建或第三方网关时修改 |
-| `OPENAI_MODEL` | ⭕ | — | 主推理模型 |
+| `LLM_PROVIDER` | ⭕ | 自动 | 强制指定服务商：`openai`、`modelscope`、`zhipu`、`deepseek`、`dashscope`、`moonshot`、`siliconflow`、`openrouter`、`ollama`、`vllm`、`local`、`auto` |
+| `LLM_API_KEY` | ⭕ | — | 通用密钥，服务商没有专属变量时使用 |
+| `LLM_BASE_URL` | ⭕ | 服务商默认值 | OpenAI 兼容服务地址；其域名/端口同时用于自动识别 |
+| `LLM_MODEL_ID` | ⭕ | 服务商默认值 | 请求时使用的模型名 |
+| `LLM_TIMEOUT` | ⭕ | `60` | 请求超时（秒） |
+| `MODELSCOPE_API_KEY` | ⭕ | — | ModelScope 密钥（自动识别 `ms-` 前缀） |
+| `ZHIPU_API_KEY` | ⭕ | — | 智谱 AI 密钥（自动识别 `id.secret` 格式） |
+| `OPENAI_API_KEY` | ⭕ | — | OpenAI 密钥 |
+| `DEEPSEEK_API_KEY` | ⭕ | — | DeepSeek 密钥 |
+| `DASHSCOPE_API_KEY` | ⭕ | — | 阿里云百炼密钥 |
+| `MOONSHOT_API_KEY` | ⭕ | — | Moonshot 密钥 |
+| `SILICONFLOW_API_KEY` | ⭕ | — | 硅基流动密钥 |
+| `OPENROUTER_API_KEY` | ⭕ | — | OpenRouter 密钥 |
+| `OLLAMA_HOST` | ⭕ | `http://localhost:11434/v1` | 本地 Ollama 地址；可省略协议头 |
+| `VLLM_BASE_URL` | ⭕ | `http://localhost:8000/v1` | 本地 vLLM 地址 |
 | `REDIS_URL` | ⭕ | — | 隐私模式的 TTL 存储；未配置时回退至内存 |
 
 > [!NOTE]
-> 上表为**规划中的配置项**，最终以代码实现为准。`.env` 已被 [.gitignore](./.gitignore) 忽略，请勿提交密钥。
+> 本地服务无需真实密钥（框架会自动填入 `ollama` / `vllm` 占位值）；vLLM 仍需通过 `LLM_MODEL_ID` 或 `model=` 指定与服务端一致的模型名。`.env` 已被 [.gitignore](./.gitignore) 忽略，请勿提交密钥。
 
 ---
 
@@ -257,9 +272,13 @@ MungerMind/
 │   ├── tools/                   #   Skills / RAG / MCP
 │   ├── memory/                  #   记忆后端（含隐私模式）
 │   │   └── privacy.py           #     「七秒钟记忆的鱼」：Redis TTL + 滚动窗口
-│   ├── llm/                     #   OpenAI 兼容客户端
-│   ├── prompts/                 #   提示词资产与加载器
-│   └── utils/                   #   公共工具
+│   ├── core/                    #   运行时基础组件
+│   │   ├── llm.py               #     支持服务商自动识别的 OpenAI 兼容客户端
+│   │   ├── message.py           #     统一消息格式
+│   │   ├── config.py            #     集中配置
+│   │   ├── exceptions.py        #     框架异常
+│   │   └── agent.py             #     Agent 抽象基类
+│   └── prompts/                 #   提示词资产与加载器
 ├── frontend/                    # 液态玻璃前端界面
 ├── tests/                       # 测试套件
 ├── docs/                        # 文档
