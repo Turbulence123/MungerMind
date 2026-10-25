@@ -15,13 +15,14 @@ resolved in this order:
 import logging
 import os
 import re
-import sys
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from openai import OpenAI
+
+from .exceptions import LLMConfigurationError, LLMRequestError
 
 # 加载 .env 文件中的环境变量
 load_dotenv()
@@ -184,11 +185,20 @@ def _is_local_endpoint(base_url: str) -> bool:
     return host in LOCAL_HOSTS or host.endswith(".local")
 
 
+def _host_matches(host: str, marker: str) -> bool:
+    """Match a host exactly or as a subdomain of a provider domain.
+
+    Plain substring matching would accept look-alike hosts such as
+    ``api.openai.com.attacker.tld`` and leak the API key to them.
+    """
+    return host == marker or host.endswith("." + marker)
+
+
 def _match_base_url(base_url: str) -> Optional[str]:
     """Map an endpoint to a provider name, or ``None`` for unknown gateways."""
-    host, port, lowered = _parse_base_url(base_url)
+    host, port, _ = _parse_base_url(base_url)
     for spec in _PROVIDER_SPECS:
-        if any(marker in lowered for marker in spec.host_markers):
+        if any(_host_matches(host, marker) for marker in spec.host_markers):
             return spec.name
     if host in LOCAL_HOSTS or host.endswith(".local"):
         if port is not None:
@@ -203,7 +213,9 @@ def _match_base_url(base_url: str) -> Optional[str]:
 def _validate_provider(name: str) -> str:
     if name not in PROVIDERS:
         supported = ", ".join(sorted(PROVIDERS))
-        raise ValueError(f"不支持的 provider: {name!r}。可选值: {supported}, auto")
+        raise LLMConfigurationError(
+            f"不支持的 provider: {name!r}。可选值: {supported}, auto"
+        )
     return name
 
 
@@ -248,20 +260,20 @@ def _normalize_provider_base_url(provider: str, value: str) -> str:
     return value
 
 
-def _safe_print(text: str, end: str = "\n", flush: bool = False) -> None:
-    """Print without crashing on consoles whose encoding cannot represent text."""
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
     try:
-        print(text, end=end, flush=flush)
-    except UnicodeEncodeError:
-        encoding = sys.stdout.encoding or "utf-8"
-        safe = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
-        print(safe, end=end, flush=flush)
+        return int(raw)
+    except ValueError as exc:
+        raise LLMConfigurationError(f"环境变量 {name} 必须是整数，当前值: {raw!r}") from exc
 
 
 class LLM:
     """
     通用LLM客户端。
-    用于调用任何兼容OpenAI接口的服务，并默认使用流式响应。
+    用于调用任何兼容OpenAI接口的服务，支持阻塞与流式两种调用方式。
     """
 
     def __init__(
@@ -273,6 +285,8 @@ class LLM:
         provider: Optional[str] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ):
         """
         初始化客户端。优先使用传入参数，如果未提供，则从环境变量加载，
@@ -292,7 +306,18 @@ class LLM:
         self.model = self._resolve_model(model, spec)
         self.api_key = self._resolve_api_key(api_key_arg, spec)
         self.base_url = self._resolve_base_url(base_url_arg, spec)
-        self.timeout = timeout or int(os.getenv("LLM_TIMEOUT", 60))
+        self.timeout = timeout if timeout is not None else _env_int("LLM_TIMEOUT", 60)
+        self.temperature = (
+            temperature
+            if temperature is not None
+            else float(os.getenv("TEMPERATURE", "0.7"))
+        )
+        max_tokens_env = os.getenv("MAX_TOKENS")
+        self.max_tokens = (
+            max_tokens
+            if max_tokens is not None
+            else (int(max_tokens_env) if max_tokens_env else None)
+        )
 
         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout)
         self._client = self.client
@@ -306,7 +331,7 @@ class LLM:
             or spec.default_model
         )
         if not resolved:
-            raise ValueError(
+            raise LLMConfigurationError(
                 f"provider={spec.name} 缺少模型ID，请传入 model 或设置 LLM_MODEL_ID。"
             )
         return resolved
@@ -320,7 +345,7 @@ class LLM:
             resolved = spec.placeholder_api_key
         if not resolved:
             envs = " / ".join(spec.api_key_envs) or "LLM_API_KEY"
-            raise ValueError(
+            raise LLMConfigurationError(
                 f"provider={spec.name} 缺少API密钥，请传入 api_key 或设置 {envs}。"
             )
         return resolved
@@ -349,7 +374,7 @@ class LLM:
         if not resolved:
             resolved = spec.default_base_url
         if not resolved:
-            raise ValueError(
+            raise LLMConfigurationError(
                 f"provider={spec.name} 缺少服务地址，请传入 base_url 或设置 LLM_BASE_URL。"
             )
         return resolved
@@ -357,60 +382,96 @@ class LLM:
     def __repr__(self) -> str:
         return f"LLM(provider={self.provider!r}, model={self.model!r}, base_url={self.base_url!r})"
 
-    def think(self, messages: List[Dict[str, str]], temperature: float = 0) -> Optional[str]:
-        """
-        调用大语言模型进行思考，并返回其响应。
-        """
-        _safe_print(f"正在调用 {self.model} 模型...")
+    def create_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[Any] = None,
+        temperature: Optional[float] = None,
+        stream: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        """调用底层 chat-completions 接口，失败时抛出 :class:`LLMRequestError`。"""
+        payload: Dict[str, Any] = dict(kwargs)
+        payload.setdefault("model", self.model)
+        payload.setdefault("messages", messages)
+        if temperature is not None:
+            payload["temperature"] = temperature
+        elif self.temperature is not None:
+            payload.setdefault("temperature", self.temperature)
+        if self.max_tokens is not None:
+            payload.setdefault("max_tokens", self.max_tokens)
+        if tools is not None:
+            payload["tools"] = tools
+            payload["tool_choice"] = tool_choice if tool_choice is not None else "auto"
+        if stream:
+            payload["stream"] = True
+
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                stream=True,
-            )
-            
-            # 处理流式响应
-            _safe_print("大语言模型响应成功:")
-            collected_content = []
+            return self.client.chat.completions.create(**payload)
+        except Exception as exc:
+            raise LLMRequestError(
+                f"调用 {self.provider} 模型 {self.model} 失败: {exc}"
+            ) from exc
+
+    def invoke(
+        self,
+        messages: List[Dict[str, Any]],
+        temperature: Optional[float] = None,
+        **kwargs: Any,
+    ) -> str:
+        """阻塞式调用，返回完整文本响应。"""
+        response = self.create_completion(messages, temperature=temperature, **kwargs)
+        return self._extract_content(response)
+
+    def stream_invoke(
+        self,
+        messages: List[Dict[str, Any]],
+        temperature: Optional[float] = None,
+        **kwargs: Any,
+    ) -> Iterator[str]:
+        """流式调用，逐段产出文本增量。"""
+        response = self.create_completion(
+            messages, temperature=temperature, stream=True, **kwargs
+        )
+        try:
             for chunk in response:
-                if not chunk.choices:
+                if not getattr(chunk, "choices", None):
                     continue
                 content = chunk.choices[0].delta.content or ""
-                _safe_print(content, end="", flush=True)
-                collected_content.append(content)
-            print()  # 在流式输出结束后换行
-            return "".join(collected_content)
+                if content:
+                    yield content
+        except Exception as exc:
+            raise LLMRequestError(f"读取流式响应失败: {exc}") from exc
 
-        except Exception as e:
-            _safe_print(f"调用LLM API时发生错误: {e}")
-            return None
+    def think(
+        self,
+        messages: List[Dict[str, Any]],
+        temperature: Optional[float] = 0.0,
+    ) -> str:
+        """兼容旧接口的别名，内部改用阻塞式 ``invoke``。"""
+        return self.invoke(messages, temperature=temperature)
 
-'''
-# --- 客户端使用示例 ---
-if __name__ == '__main__':
+    @staticmethod
+    def _extract_content(response: Any) -> str:
+        choices = getattr(response, "choices", None)
+        if not choices:
+            return ""
+        message = getattr(choices[0], "message", None)
+        if message is None:
+            return ""
+        return getattr(message, "content", None) or ""
+
+
+if __name__ == "__main__":
     try:
-        llmClient = LLM()
-        
-        exampleMessages = [
-            {"role": "system", "content": "You are a helpful assistant that writes Python code."},
-            {"role": "user", "content": "决定我明天要不要早起"}
-        ]
-        
-        print(f"--- 调用LLM（provider={llmClient.provider}） ---")
-        responseText = llmClient.think(exampleMessages)
-        if responseText:
-            print("\n\n--- 完整模型响应 ---")
-            print(responseText)
-
-    except ValueError as e:
-        print(e)
-'''
-
-if __name__ == '__main__':
-    llm = LLM(provider="ollama", model="deepseek-r1:1.5b")
-
-    answer = llm.think([
-        {"role": "user", "content": "用一句话解释什么是复利。"}
-    ])
-    print(answer)
+        client = LLM()
+        print(repr(client))
+        print(
+            client.invoke(
+                [{"role": "user", "content": "用一句话解释什么是复利。"}]
+            )
+        )
+    except LLMConfigurationError as exc:
+        print(f"配置错误: {exc}")
