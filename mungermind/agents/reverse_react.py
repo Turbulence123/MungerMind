@@ -219,6 +219,9 @@ DEFAULT_ANALYSIS_PROMPT = """请对下面的问题做一轮逆向分析。
 # 任务目标
 {question}
 
+# 任务上下文（同一任务此前的结论，可能不完整；没有就忽略）
+{task_context}
+
 # 你目前的立场
 {position}
 
@@ -477,19 +480,21 @@ class ReverseReActAgent(Agent):
 
     # -- 入口 --------------------------------------------------------------- #
 
-    def run(self, input_text: str, **kwargs: Any) -> str:
+    def run(self, input_text: str, context: str = "", **kwargs: Any) -> str:
         """跑完逆向推理循环并返回最终答案字符串。"""
         try:
-            result = self.run_with_result(input_text, **kwargs)
+            result = self.run_with_result(input_text, context=context, **kwargs)
         except MungerMindError as exc:
             answer = f"❌ 逆向分析未能完成: {exc}"
             self.record_exchange(input_text, answer)
             return answer
         return result.final_answer
 
-    def run_with_result(self, input_text: str, **kwargs: Any) -> ReverseReActResult:
+    def run_with_result(
+        self, input_text: str, context: str = "", **kwargs: Any
+    ) -> ReverseReActResult:
         """同 :meth:`run`，但返回完整结构化结果，解析失败时抛出异常。"""
-        result = self._execute(input_text, **kwargs)
+        result = self._execute(input_text, context=context, **kwargs)
         self.last_result = result
         self.record_exchange(input_text, result.final_answer)
         return result
@@ -499,6 +504,7 @@ class ReverseReActAgent(Agent):
         input_text: str,
         *,
         on_progress: Optional[Callable[[str], None]] = None,
+        context: str = "",
         **kwargs: Any,
     ) -> Iterator[str]:
         """流式版本：逐块产出最终答案，循环阶段通过 ``on_progress`` 报告进度。
@@ -507,7 +513,7 @@ class ReverseReActAgent(Agent):
         :attr:`last_result` 与对话历史才写入，中途放弃迭代则不会留下记录。
         """
         cycles, position, stop_reason = self._run_cycles(
-            input_text, on_progress=on_progress, **kwargs
+            input_text, on_progress=on_progress, context=context, **kwargs
         )
 
         pieces: List[str] = []
@@ -537,8 +543,12 @@ class ReverseReActAgent(Agent):
 
     # -- 主循环 ------------------------------------------------------------- #
 
-    def _execute(self, question: str, **kwargs: Any) -> ReverseReActResult:
-        cycles, position, stop_reason = self._run_cycles(question, **kwargs)
+    def _execute(
+        self, question: str, context: str = "", **kwargs: Any
+    ) -> ReverseReActResult:
+        cycles, position, stop_reason = self._run_cycles(
+            question, context=context, **kwargs
+        )
         if self._cancelled:
             final_answer = position.strip() or CANCELLED_ANSWER
         else:
@@ -566,6 +576,7 @@ class ReverseReActAgent(Agent):
         question: str,
         *,
         on_progress: Optional[Callable[[str], None]] = None,
+        context: str = "",
         **kwargs: Any,
     ) -> Tuple[List[ReverseCycleResult], str, str]:
         """跑完逆向循环，返回 ``(各轮结果, 最新立场, 停止原因)``。"""
@@ -593,7 +604,9 @@ class ReverseReActAgent(Agent):
             if on_progress is not None:
                 on_progress(PROGRESS_CYCLE.format(cycle=cycle_number))
             try:
-                cycle = self._run_cycle(cycle_number, question, position, **kwargs)
+                cycle = self._run_cycle(
+                    cycle_number, question, position, context=context, **kwargs
+                )
             except _Cancelled:
                 stop_reason = STOP_CANCELLED
                 break
@@ -621,12 +634,14 @@ class ReverseReActAgent(Agent):
         cycle_number: int,
         question: str,
         position: str,
+        context: str = "",
         **kwargs: Any,
     ) -> ReverseCycleResult:
         analysis: _AnalysisDraft = self._ask_json(
             self.prompts["analysis"].format(
                 question=question,
                 position=position or "（尚无立场：请先给出你对该问题的初步判断）",
+                task_context=context or "（无：本轮没有可用的上文）",
                 max_actions=self.max_actions_per_cycle,
                 schema=_ANALYSIS_SCHEMA_TEXT,
             ),

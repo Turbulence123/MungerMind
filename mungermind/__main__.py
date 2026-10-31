@@ -1,30 +1,37 @@
 """Command-line entry point, invoked as ``python -m mungermind``.
 
-最小闭环：把问题交给 ReverseReAct 逆向推理引擎，打印返回的答案。
+最小闭环：在一个任务里用 ReverseReAct 逆向推理回答问题，并支持继续追问。
 
-    python -m mungermind                       # 交互输入：敲一个问题，回车
-    python -m mungermind "要不要接受这份工作？"   # 直接把问题写在参数里
-    python -m mungermind --strategies AB --cycles 1 "要不要接受这份工作？"
+    python -m mungermind                         # 交互：可连续追问，空行退出
+    python -m mungermind "要不要接受这份工作？"     # 单次运行
+    python -m mungermind --report report.json "要不要接受这份工作？"
     python -m mungermind --audit "要不要接受这份工作？"
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from pathlib import Path
 from typing import Any, Callable, List, Optional, Sequence
 
 from .agents.reverse_react import ReverseReActAgent, ReverseReActResult
 from .core.exceptions import MungerMindError
 from .core.llm import LLM
+from .core.report import DecisionReport
+from .core.task import Task, TaskState
+from .reasoning.adapters import ReverseReActMode
+from .reasoning.report import build_report
 
 LLMFactory = Callable[[], Any]
 
 INTERACTIVE_BANNER = (
     "MungerMind · ReverseReAct 逆向推理\n"
-    "输入一个问题后回车；直接回车、输入 exit 或按 Ctrl+C 退出。"
+    "输入问题后回车；同一任务内可以继续追问，直接回车、输入 exit 或按 Ctrl+C 退出。"
 )
 INTERACTIVE_PROMPT = "问题> "
+CONTINUE_PROMPT = "继续> "
 EXIT_WORDS = frozenset({"exit", "quit", "q", "退出"})
 
 
@@ -57,6 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="硬性循环上限（默认 3 轮）",
     )
     parser.add_argument(
+        "--report",
+        default=None,
+        metavar="PATH",
+        help="把最近一轮写成报告：.json 后缀写 JSON，其他后缀写 Markdown",
+    )
+    parser.add_argument(
         "--audit",
         action="store_true",
         help="额外打印每轮的结构化结果",
@@ -64,13 +77,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _read_question() -> Optional[str]:
+def _read_question(first: bool = True) -> Optional[str]:
     """交互式读取一个问题；空输入、退出词、EOF 与 Ctrl+C 都返回 ``None``。
 
     提示语一律走 stderr，保证 stdout 只有答案，可直接重定向到文件。
     """
-    print(INTERACTIVE_BANNER, file=sys.stderr, flush=True)
-    print(INTERACTIVE_PROMPT, end="", file=sys.stderr, flush=True)
+    if first:
+        print(INTERACTIVE_BANNER, file=sys.stderr, flush=True)
+    print(INTERACTIVE_PROMPT if first else CONTINUE_PROMPT, end="", file=sys.stderr, flush=True)
     try:
         raw = input()
     except (EOFError, KeyboardInterrupt):
@@ -90,8 +104,9 @@ def main(
     *,
     llm_factory: LLMFactory = LLM,
 ) -> int:
-    """解析参数、运行逆向推理并打印答案；返回进程退出码。"""
+    """解析参数、在任务里运行逆向推理并打印答案；返回进程退出码。"""
     args = build_parser().parse_args(argv)
+    interactive = not args.question
     question = " ".join(args.question).strip()
     if not question:
         question = _read_question()
@@ -108,26 +123,70 @@ def main(
         agent_kwargs["max_cycles"] = args.max_cycles
 
     agent: Optional[ReverseReActAgent] = None
+    mode: Optional[ReverseReActMode] = None
+    task = Task(question)
     try:
         agent = ReverseReActAgent(name="ReverseReAct", llm=llm_factory(), **agent_kwargs)
-        for chunk in agent.run_stream(question, on_progress=_progress):
-            sys.stdout.write(chunk)
-            sys.stdout.flush()
+        mode = ReverseReActMode(agent)
+
+        while question is not None:
+            task.start()
+            for chunk in mode.run_stream(task, question, on_progress=_progress):
+                sys.stdout.write(chunk)
+                sys.stdout.flush()
+            print()
+
+            result = mode.last_result
+            if result is None:
+                if task.state is TaskState.RUNNING:
+                    task.fail("流式输出没有产生完整结果")
+                print("未取得完整结果，任务结束。", file=sys.stderr)
+                return 1
+
+            task.add_turn(question, result.answer)
+            if args.report:
+                _write_report(
+                    args.report,
+                    build_report(task, result, question, turn=len(task.turns)),
+                )
+            if args.audit and agent.last_result is not None:
+                print()
+                print(_format_audit(agent.last_result))
+
+            if not interactive:
+                task.finish()
+                break
+
+            task.wait_for_user()
+            question = _read_question(first=False)
+
+        if task.state is TaskState.WAITING_FOR_USER:
+            task.finish()
     except KeyboardInterrupt:
         # 用户在等待模型时按 Ctrl+C：标记取消并正常退出，不抛栈。
         if agent is not None:
             agent.cancel()
+        if task.state in (TaskState.RUNNING, TaskState.WAITING_FOR_USER):
+            task.cancel()
         print("\n已取消，退出。", file=sys.stderr)
         return 0
-    except (MungerMindError, ValueError) as exc:
+    except (MungerMindError, ValueError, OSError) as exc:
+        if task.state is TaskState.RUNNING:
+            task.fail(str(exc))
         print(f"\n❌ {exc}", file=sys.stderr)
         return 1
-    print()
-
-    if args.audit and agent.last_result is not None:
-        print()
-        print(_format_audit(agent.last_result))
     return 0
+
+
+def _write_report(path: str, report: DecisionReport) -> None:
+    """按后缀写 JSON 或 Markdown；写失败交给调用方处理。"""
+    target = Path(path)
+    if target.suffix.lower() == ".json":
+        text = json.dumps(report.to_dict(), ensure_ascii=False, indent=2) + "\n"
+    else:
+        text = report.render_markdown()
+    target.write_text(text, encoding="utf-8")
+    print(f"报告已写入：{target}", file=sys.stderr)
 
 
 def _progress(message: str) -> None:

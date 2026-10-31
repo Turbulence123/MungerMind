@@ -14,6 +14,10 @@ class ConfigurationError(MungerMindError, ValueError):
     """配置缺失或取值非法。"""
 
 
+class TaskStateError(MungerMindError):
+    """任务状态不允许这次转移（规格 9.1）。"""
+
+
 class LLMError(MungerMindError):
     """模型调用相关错误的基类。"""
 
