@@ -51,9 +51,9 @@
 
 | Feature | Description |
 | --- | --- |
-| 🧠 **Multidisciplinary Mental Models** | Twelve built-in libraries of classic models spanning mathematics, physics, chemistry, engineering, astronomy & atmospheric science, psychology, biology, medicine, philosophy, history, law, and economics |
+| 🧠 **Multidisciplinary Mental Models** | Twelve planned discipline libraries of classic models (content in progress) spanning mathematics, physics, chemistry, engineering, astronomy & atmospheric science, psychology, biology, medicine, philosophy, history, law, and economics |
 | 🪜 **Forced Thinking Order** | A fixed reasoning pipeline that constrains agents — no skipped steps, no jumping to conclusions |
-| 👥 **Multi-Agent Expert Team** | Built on CrewAI with **one expert per discipline**: independent perspectives first, a unified judgement after |
+| 👥 **Multi-Agent Expert Team** | Planned on CrewAI: **one expert per discipline**, independent perspectives first, a unified judgement after |
 | 🎛️ **Management Functions** | The main agent plays a manager's four roles — Plan, Organize, Coordinate, Control |
 | 🎭 **Social Psychology Governance** | Governs the agent collective with group-dynamics principles and breaks groupthink |
 | 🔌 **Decoupled Tool Layer** | Skills / RAG / MCP operate on the outside world, fully separated from reasoning |
@@ -180,7 +180,7 @@ flowchart TD
 ## 🚀 Quick Start
 
 > [!WARNING]
-> This project is at an **early incubation stage (alpha)**. The package ships as a **skeleton**: [mungermind/__main__.py](./mungermind/__main__.py) and [frontend/index.html](./frontend/index.html) are placeholders, and every module only declares its responsibility. The commands below prepare a development environment; usage examples will follow with the first usable release.
+> This project is at an **early incubation stage (alpha)**. The ReverseReAct engine, task lifecycle and eight-section decision report are usable from the CLI today; the mental-model library, expert team, mode router and tool gateway are still under development. [frontend/index.html](./frontend/index.html) remains a placeholder.
 
 ### Requirements
 
@@ -325,6 +325,8 @@ It is a powerful **privacy tool**, but not a general-purpose memory strategy:
 ## 🧭 Roadmap
 
 - [x] Project skeleton and dependency management (uv)
+- [x] ReverseReAct engine (A/B/C strategies, two-cycle loop, structured results)
+- [x] Task lifecycle and eight-section decision report (multi-turn CLI, `--report`)
 - [ ] Multidisciplinary mental-model library (twelve disciplines)
 - [ ] Forced thinking order engine
 - [ ] CrewAI multi-agent expert team
@@ -370,7 +372,7 @@ No. Privacy Mode is an **optional toggle** for sensitive information and one-sho
 
 <br/>
 
-Not yet. The repository is a project skeleton and the core capabilities are still being designed and implemented — follow the [roadmap](#-roadmap).
+Partially. The CLI can already run a ReverseReAct analysis and write a decision report; the mental-model library and expert team are still being built — follow the [roadmap](#-roadmap).
 
 </details>
 
